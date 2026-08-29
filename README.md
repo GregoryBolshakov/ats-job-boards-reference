@@ -64,13 +64,17 @@ everywhere only because the pipeline fills it from the slug. See trap 2.
 
 Regenerate both tables with `python3 tools/coverage.py data/jobs-2026-08-29.json`.
 
-**The two SmartRecruiters zeroes for pay are wrong, and the snapshot cannot show it.**
+**The SmartRecruiters and Lever zeroes for pay are artefacts of the run, not facts about
+the boards.** Lever's `salaryRange` was not read at all when this file was made, so every
+Lever row shows no pay. It is on 8 of the 384 `leverdemo` rows here. See trap 10.
+
+**On SmartRecruiters the zeroes are wrong too, and the snapshot cannot show it.**
 That board keeps pay on the per advert endpoint and the run that made this file read only
 the list, so it recorded no pay for every SmartRecruiters row. The board does publish it.
 Sampled separately on 2026-08-29: wise 38 of 40 adverts, Sodexo 9 of 40, BoschGroup 0 of
 40. See trap 9. The next snapshot will carry it.
 
-## Nine traps
+## Ten traps
 
 These cost real time. In rough order of how much.
 
@@ -177,6 +181,20 @@ KB on Databricks. But `content=false` also removes `departments` and `offices` f
 job in the response. Turn it off to save bandwidth and the `department` column goes null
 across the entire board, with no error anywhere.
 
+There is a way to have both, from
+[moonie0201 on `tonyperkins/seeker-os` #35](https://github.com/tonyperkins/seeker-os/issues/35#issuecomment-5460438424).
+Call `GET /v1/boards/{slug}/departments` alongside the bare jobs call. It returns every
+department with the job ids under it, so you can rebuild the column without the ad bodies.
+Measured on the wire, gzipped, 2026-08-29:
+
+| board | bare `/jobs` | `/departments` | `/jobs?content=true` |
+|---|---|---|---|
+| stripe | 29.3 KB | 50.6 KB | 717.1 KB |
+| anthropic | 30.6 KB | 29.7 KB | 892.1 KB |
+
+Both calls together are about a ninth of the one call. On both boards no job id appeared
+under more than one department, so the mapping is one to one and needs no tie break.
+
 ### 7. Pay coverage is a company setting, not a platform property
 
 All three boards that carry pay leave it up to the company, so a board-level average is
@@ -240,6 +258,33 @@ and `additionalInformation`.
 The cost is one request per advert. On a 4,780 advert board like BoschGroup that is real
 money and real time, so fetch details only for the rows you are keeping.
 
+### 10. Lever does publish pay, and it is easy to get wrong twice
+
+`salaryRange` is `{min, max, currency, interval}`. Coverage is tiny. Across 2,527 postings
+on eight boards, 12 carried one, and 8 of those 12 were on `leverdemo`, Lever's own demo
+board. So on a real board it is well under 1% and calling Lever a no-pay board is nearly
+right, which is why it is easy to ship the wrong thing.
+
+Two traps, both of which return a plausible number rather than an error.
+
+A company can turn the field on and leave it at zero:
+
+```
+{"currency":"USD","interval":"per-year-salary","min":0,"max":0}
+```
+
+That is absent, not a job paying nothing. Map it straight through and you publish a
+declared range of zero.
+
+`interval` is typed by the employer and is sometimes wrong. One live advert carried
+`bi-week-salary` on a 22.4 to 26 range, which is an hourly rate. Lever's own values are
+`per-year-salary`, `per-month-salary`, `bi-week-salary`, `per-week-salary`, `per-day-wage`
+and `per-hour-wage`. Carry the label across, and never use it to rescale the amount. A
+wrong label stays a wrong label. A rescale turns it into a wrong number.
+
+There is also `salaryDescription` and `salaryDescriptionPlain`, free text, which is where a
+company says the range is base only.
+
 ## The snapshot
 
 `data/jobs-2026-08-29.csv` and `.json`, 5,117 adverts, 16 companies, all four boards.
@@ -259,7 +304,7 @@ the shape of the data and to test a parser, then read the boards yourself.
 ## Reproducing it
 
 Every endpoint above is public, so you can do all of this with `curl` and a normalisation
-layer. That layer is the part that takes the time, and the nine traps are what it costs.
+layer. That layer is the part that takes the time, and the ten traps are what it costs.
 
 The snapshot came from an Apify Actor that already does the normalising:
 [ATS Jobs Scraper](https://apify.com/gubidonius/company-jobs-scraper). The
