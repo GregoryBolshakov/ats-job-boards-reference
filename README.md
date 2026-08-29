@@ -1,7 +1,7 @@
 # ATS job board reference
 
 Four applicant tracking systems publish their job boards as open JSON. No key, no login,
-no scraping. This repo is what those four endpoints actually return, measured on 5,117
+no scraping. This repo is what those four endpoints actually return, measured on 5,122
 live adverts from 16 companies on 2026-08-29, plus the snapshot itself so you can look at
 the rows without signing up for anything.
 
@@ -23,11 +23,10 @@ it. The REST one above is a plain GET and returns the same board.
 <!-- coverage:start -->
 ## Which fields each board actually fills in
 
-
 Percentage of adverts where the field is present and not empty. `company` is 100%
 everywhere only because the pipeline fills it from the slug. See trap 2.
 
-| field | greenhouse (2,448) | lever (1,360) | ashby (1,167) | smartrecruiters (142) |
+| field | greenhouse (2,453) | lever (1,360) | ashby (1,168) | smartrecruiters (141) |
 |---|---|---|---|---|
 | `company` | 100% | 100% | 100% | 100% |
 | `title` | 100% | 100% | 100% | 100% |
@@ -37,7 +36,7 @@ everywhere only because the pipeline fills it from the slug. See trap 2.
 | `postedAt` | 100% | 100% | 100% | 100% |
 | `updatedAt` | 100% | 0% | 0% | 0% |
 | `applyUrl` | 100% | 100% | 100% | 100% |
-| `salaryMin` | 47% | 0% | 72% | 0% |
+| `salaryMin` | 47% | 1% | 72% | 13% |
 | `salaryRaw` | 47% | 0% | 72% | 0% |
 
 ## Declared pay, per company
@@ -45,15 +44,15 @@ everywhere only because the pipeline fills it from the slug. See trap 2.
 | board | company | adverts | with pay |
 |---|---|---|---|
 | lever | veeva | 887 | 0% |
-| greenhouse | databricks | 855 | 55% |
+| greenhouse | databricks | 857 | 55% |
 | ashby | openai | 758 | 85% |
-| greenhouse | stripe | 573 | 0% |
-| greenhouse | anthropic | 570 | 89% |
-| lever | leverdemo | 384 | 0% |
+| greenhouse | stripe | 575 | 0% |
+| greenhouse | anthropic | 571 | 89% |
+| lever | leverdemo | 384 | 2% |
 | greenhouse | gitlab | 220 | 38% |
 | greenhouse | figma | 163 | 60% |
-| smartrecruiters | Sodexo | 140 | 0% |
-| ashby | ramp | 138 | 96% |
+| ashby | ramp | 139 | 96% |
+| smartrecruiters | Sodexo | 139 | 13% |
 | ashby | notion | 133 | 0% |
 | ashby | vanta | 109 | 61% |
 | lever | spotify | 89 | 0% |
@@ -64,15 +63,10 @@ everywhere only because the pipeline fills it from the slug. See trap 2.
 
 Regenerate both tables with `python3 tools/coverage.py data/jobs-2026-08-29.json`.
 
-**The SmartRecruiters and Lever zeroes for pay are artefacts of the run, not facts about
-the boards.** Lever's `salaryRange` was not read at all when this file was made, so every
-Lever row shows no pay. It is on 8 of the 384 `leverdemo` rows here. See trap 10.
-
-**On SmartRecruiters the zeroes are wrong too, and the snapshot cannot show it.**
-That board keeps pay on the per advert endpoint and the run that made this file read only
-the list, so it recorded no pay for every SmartRecruiters row. The board does publish it.
-Sampled separately on 2026-08-29: wise 38 of 40 adverts, Sodexo 9 of 40, BoschGroup 0 of
-40. See trap 9. The next snapshot will carry it.
+**Both pay columns were wrong in the first two versions of this file and are now fixed.**
+Lever's `salaryRange` was never read, and SmartRecruiters keeps pay on a second endpoint
+that the run never called, so both showed 0%. They now show 1% and 13%, which are the real
+numbers and are still low. Traps 9 and 10 say why.
 
 ## Ten traps
 
@@ -287,7 +281,7 @@ company says the range is base only.
 
 ## The snapshot
 
-`data/jobs-2026-08-29.csv` and `.json`, 5,117 adverts, 16 companies, all four boards.
+`data/jobs-2026-08-29.csv` and `.json`, 5,122 adverts, 16 companies, all four boards.
 `data/input.json` is the exact input that produced it.
 
 Columns: `platform`, `companySlug`, `company`, `jobId`, `title`, `location`,
@@ -308,14 +302,15 @@ layer. That layer is the part that takes the time, and the ten traps are what it
 
 The snapshot came from an Apify Actor that already does the normalising:
 [ATS Jobs Scraper](https://apify.com/gubidonius/company-jobs-scraper). The
-run that produced this file took 17 seconds and cost $0.028 for 5,117 adverts, on build
-0.1.10. It is mine and it is paid, at $0.0005 per advert with no monthly fee. Apify's free
+run that produced this file cost $0.028 for 5,122 adverts, on build 0.1.11. The
+SmartRecruiters rows take one extra request each, so that board is the slow one. It is mine and it is paid, at $0.0005 per advert with no monthly fee. Apify's free
 tier covers a run this size many times over.
 
-Traps 4, 5, 6 and 9 were all found while measuring for this repo, and every one of them
-was a bug in that Actor before it was an entry in this list. Each one returned a run that
+Traps 4, 5, 6, 9 and 10 were all found while measuring for this repo, and every one of
+them was a bug in that Actor before it was an entry in this list. Each returned a run that
 succeeded with a wrong number in it, which is the only failure shape worth being afraid of
-here. 4, 5 and 6 are fixed in build 0.1.10 and 9 in 0.1.11.
+here. All five are fixed as of build 0.1.11. Trap 6's `/departments` route came from
+moonie0201, who found it the same way.
 
 ## Licence
 
