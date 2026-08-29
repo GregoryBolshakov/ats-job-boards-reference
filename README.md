@@ -64,26 +64,54 @@ everywhere only because the pipeline fills it from the slug. See trap 2.
 
 Regenerate both tables with `python3 tools/coverage.py data/jobs-2026-08-29.json`.
 
-## Eight traps
+**The two SmartRecruiters zeroes for pay are wrong, and the snapshot cannot show it.**
+That board keeps pay on the per advert endpoint and the run that made this file read only
+the list, so it recorded no pay for every SmartRecruiters row. The board does publish it.
+Sampled separately on 2026-08-29: wise 38 of 40 adverts, Sodexo 9 of 40, BoschGroup 0 of
+40. See trap 9. The next snapshot will carry it.
+
+## Nine traps
 
 These cost real time. In rough order of how much.
 
 ### 1. An empty board and a wrong slug look identical
 
-SmartRecruiters answers HTTP 200 with `totalFound: 0` for a company name that does not
-exist at all:
+Three of the four boards let you tell them apart, and the fourth does not. Measured
+2026-08-29:
+
+| | unknown slug | real board, nothing open |
+|---|---|---|
+| Greenhouse | 404 | 200, `jobs: []` |
+| Lever | 404 | 200, `[]` |
+| Ashby | 404 | 200, `jobs: []` |
+| SmartRecruiters | **200, `totalFound: 0`** | 200, `totalFound: 0` |
 
 ```
 GET /v1/companies/nonsense-xyz-9/postings  ->  200 {"totalFound":0,"content":[]}
+GET /posting-api/job-board/snyk            ->  200 {"jobs":[]}      real board, no roles
 ```
 
-So zero results never tells you which of two things happened. The company is on the
-board and hiring nobody, or you guessed the wrong system. Greenhouse and Lever return
-404 for an unknown slug, which is much easier to handle. Ashby sits in between.
+So on SmartRecruiters zero results never tells you which happened. On the other three a
+404 means you guessed wrong and a 200 with no rows means the company is hiring nobody.
 
-If you auto-detect the platform from a bare company name, "has adverts" is the only
-signal you get, and a company with a genuinely empty board will be reported as not found.
-Pin the platform explicitly when you can.
+If you auto-detect the platform from a bare company name, "has adverts" is still the only
+signal that works on all four, and a company with a genuinely empty board comes back as
+not found. Pin the platform explicitly when you can.
+
+### 1b. A company can answer on two systems at once
+
+An ATS migration leaves the old board up and answering. `duffel` on 2026-08-29:
+
+```
+GET api.lever.co/v0/postings/duffel?mode=json          ->  200 []
+GET api.ashbyhq.com/posting-api/job-board/duffel       ->  200 11 live roles
+```
+
+Nothing 404s. If your detection keeps the first provider that returns 200, and you try
+Lever before Ashby, you get the dead board and report the company as hiring nobody. Rank
+the candidates by row count instead of by who answers first.
+
+This also breaks board retirement built on 404s. A migrated board never returns one.
 
 ### 2. Lever and Ashby never send the company name
 
@@ -151,7 +179,7 @@ across the entire board, with no error anywhere.
 
 ### 7. Pay coverage is a company setting, not a platform property
 
-Both boards that carry pay leave it up to the company, so a board-level average is
+All three boards that carry pay leave it up to the company, so a board-level average is
 useless for validation:
 
 | board | company | with declared pay |
@@ -162,9 +190,15 @@ useless for validation:
 | ashby | linear | 0% |
 | greenhouse | anthropic | 89% |
 | greenhouse | stripe | 0% |
+| smartrecruiters | wise | 95% |
+| smartrecruiters | Sodexo | 22% |
+| smartrecruiters | BoschGroup | 0% |
 
 A rule like "Ashby rows should have a salary" fires constantly on Notion and Linear, and
 both of those are correct behaviour. Zero is a real answer.
+
+The SmartRecruiters rows are 40 adverts sampled per board, not the whole board. The other
+rows are the full board.
 
 Worth recording alongside the number whether a company declared it or you parsed it out
 of prose. "The company published no pay" and "our parser missed the pay" produce the same
@@ -182,6 +216,29 @@ breaks when:
 
 The third one is the expensive one. Treat a mass close plus a mass open on one day as a
 migration until proven otherwise.
+
+### 9. SmartRecruiters keeps pay and advert text on a second endpoint
+
+The list response has neither. No `compensation` key, no `jobAd` key, so a pipeline that
+reads only the list reports no pay for every company on that board and an empty
+description for every advert. Both look like the company published nothing.
+
+```
+GET /v1/companies/wise/postings           ->  no jobAd, no compensation
+GET /v1/companies/wise/postings/{id}      ->  jobAd.sections + compensation
+```
+
+`compensation` is `{min, max, currency, period}` and `period` is one of `YEARLY`,
+`MONTHLY`, `HOURLY`. That makes SmartRecruiters the only board of the four that states the
+period as a field rather than free text, so it is the one place the interval needs no
+guessing. Compare trap 5, where Greenhouse leaves it in a free text `title` and one sample
+carried both `Annual Salary:` and `Hourly Base Pay Range:`.
+
+`jobAd.sections` has four blocks: `companyDescription`, `jobDescription`, `qualifications`
+and `additionalInformation`.
+
+The cost is one request per advert. On a 4,780 advert board like BoschGroup that is real
+money and real time, so fetch details only for the rows you are keeping.
 
 ## The snapshot
 
@@ -202,7 +259,7 @@ the shape of the data and to test a parser, then read the boards yourself.
 ## Reproducing it
 
 Every endpoint above is public, so you can do all of this with `curl` and a normalisation
-layer. That layer is the part that takes the time, and the eight traps are what it costs.
+layer. That layer is the part that takes the time, and the nine traps are what it costs.
 
 The snapshot came from an Apify Actor that already does the normalising:
 [ATS Jobs Scraper](https://apify.com/gubidonius/company-jobs-scraper). The
@@ -210,8 +267,10 @@ run that produced this file took 17 seconds and cost $0.028 for 5,117 adverts, o
 0.1.10. It is mine and it is paid, at $0.0005 per advert with no monthly fee. Apify's free
 tier covers a run this size many times over.
 
-Traps 4, 5 and 6 were all found while generating this snapshot, and both were bugs in that
-Actor before they were entries in this list. It is fixed in 0.1.10.
+Traps 4, 5, 6 and 9 were all found while measuring for this repo, and every one of them
+was a bug in that Actor before it was an entry in this list. Each one returned a run that
+succeeded with a wrong number in it, which is the only failure shape worth being afraid of
+here. 4, 5 and 6 are fixed in build 0.1.10 and 9 in 0.1.11.
 
 ## Licence
 
