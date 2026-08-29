@@ -298,6 +298,35 @@ the shape of the data and to test a parser, then read the boards yourself.
 [CHANGELOG.md](CHANGELOG.md) lists what changed on which day, including the two times a
 number in here turned out to be wrong. Read it before relying on a percentage.
 
+## A bigger snapshot, grouped by segment
+
+`data/segments-2026-08-29.json` and `.csv`, 10,003 adverts from 69 companies on
+2026-08-29, whole boards, with a `segment` column.
+
+| segment | companies | adverts | declare pay | median base (USD/yr) | remote |
+|---|---|---|---|---|---|
+| ai-labs | 15 | 2,791 | 55% | 238,000 to 325,000 | 53% |
+| devtools | 16 | 1,403 | 26% | 158,000 to 220,000 | 44% |
+| fintech | 19 | 2,597 | 15% | 170,765 to 228,200 | 36% |
+| top-tech | 19 | 3,212 | 4% | 169,000 to 301,000 | 24% |
+
+Two things worth knowing before you use these numbers.
+
+**Pay disclosure is a company decision and it splits hard by segment.** AI labs publish a
+range on 55% of adverts and big tech on 4%. That is a fourteenfold gap between two groups of
+similar companies on the same boards, so a pipeline that treats a missing salary as a data
+quality problem will be wrong most of the time about most companies.
+
+**The medians are not comparable across segments, and top-tech is the worst offender.** Each
+median is taken over the adverts that declared a USD yearly range, so a segment disclosing
+4% is being judged on the 4% it chose to publish. US pay transparency law is why most of
+those exist at all, which biases every column toward US roles at companies big enough to
+have counsel. Read the disclosure rate first and the money second.
+
+One company in the lists, `ashby:linear`, returned an empty board earlier the same day and
+adverts later. That is trap 1 in the wild, and it is why an empty response should be held
+rather than read as every role closing.
+
 ## Reproducing it
 
 Every endpoint above is public, so you can do all of this with `curl` and a normalisation

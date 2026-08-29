@@ -8,6 +8,10 @@ quietly edited.
 
 ## 2026-08-29
 
+- Added a second, bigger snapshot: `data/segments-2026-08-29.*`, 10,003 adverts from 69
+  companies across four segments, whole boards. Pay disclosure runs 55% in AI labs and 4%
+  in big tech, which is the widest split in the file.
+
 - **Correction.** Lever pay showed 0% and that was wrong. Lever publishes `salaryRange` and
   the run that made the snapshot never read it. Now trap 10, with the two traps inside it:
   `{min: 0, max: 0}` means absent rather than free, and `interval` is typed by the employer
