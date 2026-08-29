@@ -295,6 +295,9 @@ row came from. Descriptions are left out to keep the file readable in a browser.
 This is a snapshot with a date on it, not a feed. Job boards change daily. Use it to see
 the shape of the data and to test a parser, then read the boards yourself.
 
+[CHANGELOG.md](CHANGELOG.md) lists what changed on which day, including the two times a
+number in here turned out to be wrong. Read it before relying on a percentage.
+
 ## Reproducing it
 
 Every endpoint above is public, so you can do all of this with `curl` and a normalisation
