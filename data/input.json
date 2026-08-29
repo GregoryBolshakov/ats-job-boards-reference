@@ -1,0 +1,23 @@
+{
+  "companies": [
+    "greenhouse:stripe",
+    "greenhouse:figma",
+    "greenhouse:databricks",
+    "greenhouse:anthropic",
+    "greenhouse:gitlab",
+    "greenhouse:monzo",
+    "lever:spotify",
+    "lever:veeva",
+    "lever:leverdemo",
+    "ashby:ramp",
+    "ashby:linear",
+    "ashby:notion",
+    "ashby:openai",
+    "ashby:vanta",
+    "smartrecruiters:Sodexo",
+    "smartrecruiters:smartrecruiters"
+  ],
+  "includeDescription": false,
+  "onlyRemote": false,
+  "maxJobsPerCompany": 1000
+}
