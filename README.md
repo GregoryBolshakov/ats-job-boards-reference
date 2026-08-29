@@ -1,7 +1,7 @@
 # ATS job board reference
 
 Four applicant tracking systems publish their job boards as open JSON. No key, no login,
-no scraping. This repo is what those four endpoints actually return, measured on 5,118
+no scraping. This repo is what those four endpoints actually return, measured on 5,117
 live adverts from 16 companies on 2026-08-29, plus the snapshot itself so you can look at
 the rows without signing up for anything.
 
@@ -12,7 +12,7 @@ checked against the live endpoints on the date given, not copied from documentat
 
 | board | endpoint | returns |
 |---|---|---|
-| Greenhouse | `GET https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true` | `{ jobs: [] }`, whole board |
+| Greenhouse | `GET https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true&pay_transparency=true` | `{ jobs: [] }`, whole board |
 | Lever | `GET https://api.lever.co/v0/postings/{slug}?mode=json` | a bare array, whole board |
 | Ashby | `GET https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true` | `{ jobs: [] }`, whole board |
 | SmartRecruiters | `GET https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset=0` | `{ content: [], totalFound }`, **100 at a time** |
@@ -23,9 +23,11 @@ it. The REST one above is a plain GET and returns the same board.
 <!-- coverage:start -->
 ## Which fields each board actually fills in
 
-Percentage of adverts where the field is present and not empty. 5,118 adverts.
 
-| field | greenhouse (2,448) | lever (1,360) | ashby (1,168) | smartrecruiters (142) |
+Percentage of adverts where the field is present and not empty. `company` is 100%
+everywhere only because the pipeline fills it from the slug. See trap 2.
+
+| field | greenhouse (2,448) | lever (1,360) | ashby (1,167) | smartrecruiters (142) |
 |---|---|---|---|---|
 | `company` | 100% | 100% | 100% | 100% |
 | `title` | 100% | 100% | 100% | 100% |
@@ -35,24 +37,21 @@ Percentage of adverts where the field is present and not empty. 5,118 adverts.
 | `postedAt` | 100% | 100% | 100% | 100% |
 | `updatedAt` | 100% | 0% | 0% | 0% |
 | `applyUrl` | 100% | 100% | 100% | 100% |
-| `salaryMin` | 0% | 0% | 72% | 0% |
-| `salaryRaw` | 0% | 0% | 72% | 0% |
-
-`company` is 100% everywhere in this table only because the pipeline fills it from the
-slug. See trap 2.
+| `salaryMin` | 47% | 0% | 72% | 0% |
+| `salaryRaw` | 47% | 0% | 72% | 0% |
 
 ## Declared pay, per company
 
 | board | company | adverts | with pay |
 |---|---|---|---|
 | lever | veeva | 887 | 0% |
-| greenhouse | databricks | 855 | 0% |
-| ashby | openai | 759 | 85% |
+| greenhouse | databricks | 855 | 55% |
+| ashby | openai | 758 | 85% |
 | greenhouse | stripe | 573 | 0% |
-| greenhouse | anthropic | 570 | 0% |
+| greenhouse | anthropic | 570 | 89% |
 | lever | leverdemo | 384 | 0% |
-| greenhouse | gitlab | 220 | 0% |
-| greenhouse | figma | 163 | 0% |
+| greenhouse | gitlab | 220 | 38% |
+| greenhouse | figma | 163 | 60% |
 | smartrecruiters | Sodexo | 140 | 0% |
 | ashby | ramp | 138 | 96% |
 | ashby | notion | 133 | 0% |
@@ -65,7 +64,7 @@ slug. See trap 2.
 
 Regenerate both tables with `python3 tools/coverage.py data/jobs-2026-08-29.json`.
 
-## Six traps
+## Eight traps
 
 These cost real time. In rough order of how much.
 
@@ -108,19 +107,70 @@ plausible number rather than an error.
 The other three boards return the whole board in one response, so paging them just
 doubles your request count.
 
-### 5. Pay is an Ashby feature, and then a per company choice
+### 5. Greenhouse hides pay behind a query parameter
 
-Only Ashby publishes pay as numbers, and only when the company filled it in. Across
-1,168 Ashby adverts, 72% carry a number. Split by company that average is meaningless:
-Ramp 96%, OpenAI 85%, Vanta 61%, Notion and Linear 0%.
+The default Greenhouse response contains no pay field at all, and it is easy to conclude
+the board simply does not carry pay. It does. Add `pay_transparency=true` and jobs come
+back with a `pay_input_ranges` array:
 
-Two things worth doing. Keep the board's own summary string next to the parsed numbers,
-because Ashby's `compensationTierSummary` often holds bonus and equity that do not belong
-in a salary range. And record whether a number was declared by the company or parsed out
-of prose by you, so downstream nobody has to guess. "The company did not publish pay" and
-"our parser missed it" are different facts and they look the same in an empty column.
+```json
+"pay_input_ranges": [{
+  "min_cents": 22280000, "max_cents": 29000000, "currency_type": "USD",
+  "title": "Annual Salary:",
+  "blurb": "<p>For sales roles, the range provided is the role's On Target Earnings ..."
+}]
+```
 
-### 6. The obvious dedup key breaks in three places
+Three things about that shape.
+
+Amounts are integer **cents**, so 22280000 is 222,800.
+
+`title` is free text the company wrote, and it is the only clue about the period. One
+sample of 488 adverts contained `Annual Salary:`, `Annual base salary range (excluding
+equity and bonus):`, `The base salary range for this position is:`, `United States Salary
+Range`, `Internship` and `Hourly Base Pay Range:`. Defaulting to annual would report an
+hourly rate as a yearly salary, which is wrong by a factor of about two thousand and
+looks perfectly plausible in a spreadsheet.
+
+`blurb` is where a company says the range is On Target Earnings rather than base salary,
+so throwing it away loses the one thing that makes the number comparable.
+
+Coverage, once you ask for it: Anthropic 89% of adverts, Databricks 55%, Figma 60%,
+GitLab 38%, Stripe 0%.
+
+Credit for this one goes to [@moonie0201's
+comment](https://github.com/tonyperkins/seeker-os/issues/35#issuecomment-5455924861) on
+seeker-os, which is where I learned the parameter exists.
+
+### 6. `content=true` on Greenhouse is not a description toggle
+
+It looks like one, and turning it off is tempting because it is worth 9.1 MB against 715
+KB on Databricks. But `content=false` also removes `departments` and `offices` from every
+job in the response. Turn it off to save bandwidth and the `department` column goes null
+across the entire board, with no error anywhere.
+
+### 7. Pay coverage is a company setting, not a platform property
+
+Both boards that carry pay leave it up to the company, so a board-level average is
+useless for validation:
+
+| board | company | with declared pay |
+|---|---|---|
+| ashby | ramp | 96% |
+| ashby | openai | 85% |
+| ashby | notion | 0% |
+| ashby | linear | 0% |
+| greenhouse | anthropic | 89% |
+| greenhouse | stripe | 0% |
+
+A rule like "Ashby rows should have a salary" fires constantly on Notion and Linear, and
+both of those are correct behaviour. Zero is a real answer.
+
+Worth recording alongside the number whether a company declared it or you parsed it out
+of prose. "The company published no pay" and "our parser missed the pay" produce the same
+empty column and mean completely different things.
+
+### 8. The obvious dedup key breaks in three places
 
 `platform:companySlug:jobId` is the natural key and it is right most of the time. It
 breaks when:
@@ -135,7 +185,7 @@ migration until proven otherwise.
 
 ## The snapshot
 
-`data/jobs-2026-08-29.csv` and `.json`, 5,118 adverts, 16 companies, all four boards.
+`data/jobs-2026-08-29.csv` and `.json`, 5,117 adverts, 16 companies, all four boards.
 `data/input.json` is the exact input that produced it.
 
 Columns: `platform`, `companySlug`, `company`, `jobId`, `title`, `location`,
@@ -152,15 +202,16 @@ the shape of the data and to test a parser, then read the boards yourself.
 ## Reproducing it
 
 Every endpoint above is public, so you can do all of this with `curl` and a normalisation
-layer. That layer is the part that takes the time, and the six traps are what it costs.
+layer. That layer is the part that takes the time, and the eight traps are what it costs.
 
 The snapshot came from an Apify Actor that already does the normalising:
 [ATS Jobs Scraper](https://apify.com/gubidonius/company-jobs-scraper). The
-run that produced this file took 17 seconds and cost $0.026 for 5,118 adverts, on build
-0.1.8. It is mine and it is paid, at $0.0005 per advert with no monthly fee. Apify's free
+run that produced this file took 17 seconds and cost $0.028 for 5,117 adverts, on build
+0.1.10. It is mine and it is paid, at $0.0005 per advert with no monthly fee. Apify's free
 tier covers a run this size many times over.
 
-The paging bug in trap 4 was found while generating this snapshot and fixed in 0.1.8.
+Traps 4, 5 and 6 were all found while generating this snapshot, and both were bugs in that
+Actor before they were entries in this list. It is fixed in 0.1.10.
 
 ## Licence
 
