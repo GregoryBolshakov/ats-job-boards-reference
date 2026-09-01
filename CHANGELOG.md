@@ -6,6 +6,29 @@ Everything here is checked against the live endpoints on the date given. When so
 turns out to be wrong it gets corrected in place and listed here as a correction, not
 quietly edited.
 
+## 2026-09-01
+
+- Added trap 11. Greenhouse `pay_input_ranges` is an array and reading `[0]` is wrong on
+  20.1% of the adverts that declare pay. Measured across 21 boards and 2,978 adverts: 331
+  carry more than one band, and on 111 of them the bands you drop are higher than the one
+  you keep. The worst understates an advert by 150,000. Includes the base pay against total
+  on-target earnings split, which is the pair you must not envelope together.
+
+- Added trap 12. The period label is wrong in both directions on every board, not just on
+  Lever. verkada publishes an annual band titled `Estimated Hourly Pay Range` and samsara
+  publishes an hourly rate titled `Annual Base Salary`.
+
+- **Correction.** Trap 10 said to carry Lever's `interval` across as given. That was half
+  right. Never rescale the amount by it, which still holds, but carrying a label the
+  numbers contradict still publishes something the company did not mean. Keep the label
+  only while the amount could belong to that period. Trap 12 has the detail.
+
+- `pay_transparency=true` works with `content=false`. Verkada is 523 KB that way against
+  3.65 MB. Added to trap 5.
+
+- Ten boards fetched twice back to back returned identical id sets, so a board that answers
+  does not shuffle adverts in and out. Added after trap 12.
+
 ## 2026-08-29
 
 - Added a second, bigger snapshot: `data/segments-2026-08-29.*`, 10,003 adverts from 69

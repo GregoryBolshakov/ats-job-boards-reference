@@ -68,7 +68,7 @@ Lever's `salaryRange` was never read, and SmartRecruiters keeps pay on a second 
 that the run never called, so both showed 0%. They now show 1% and 13%, which are the real
 numbers and are still low. Traps 9 and 10 say why.
 
-## Ten traps
+## Twelve traps
 
 These cost real time. In rough order of how much.
 
@@ -163,6 +163,12 @@ so throwing it away loses the one thing that makes the number comparable.
 
 Coverage, once you ask for it: Anthropic 89% of adverts, Databricks 55%, Figma 60%,
 GitLab 38%, Stripe 0%.
+
+The parameter also works with `content=false`, which is not obvious and is worth knowing.
+Pay survives, the ad bodies do not. Verkada is 523 KB that way against 3.65 MB with
+`content=true`, so you can have pay, departments through trap 6, and none of the weight.
+
+It is an **array**, and trap 11 is about that.
 
 Credit for this one goes to [@moonie0201's
 comment](https://github.com/tonyperkins/seeker-os/issues/35#issuecomment-5455924861) on
@@ -273,11 +279,89 @@ declared range of zero.
 `interval` is typed by the employer and is sometimes wrong. One live advert carried
 `bi-week-salary` on a 22.4 to 26 range, which is an hourly rate. Lever's own values are
 `per-year-salary`, `per-month-salary`, `bi-week-salary`, `per-week-salary`, `per-day-wage`
-and `per-hour-wage`. Carry the label across, and never use it to rescale the amount. A
-wrong label stays a wrong label. A rescale turns it into a wrong number.
+and `per-hour-wage`. Never use the label to rescale the amount. Trap 12 is what to do with
+the label itself, and it is not what an earlier version of this file said.
 
 There is also `salaryDescription` and `salaryDescriptionPlain`, free text, which is where a
 company says the range is base only.
+
+### 11. Greenhouse `pay_input_ranges` is an array, and the plural is normal
+
+Everyone reads `[0]`. I did for months. A company that pays differently by location, or
+hires at several levels on one advert, sends one band for each and writes the location or
+the level in the same `title` field the period word lives in:
+
+```
+hellofresh, Director, Value Stream Manufacturing
+  Colorado Pay Range     148,050 - 179,000
+  Texas Pay Range        143,850 - 174,000
+  Newark, NJ Pay Range   164,850 - 199,500
+  Arizona Pay Range      143,850 - 174,000
+  Illinois Pay Range     148,050 - 179,000
+```
+
+Measured 2026-09-01 across 21 boards and 2,978 adverts, of which 1,643 declare pay:
+
+- **331 carry more than one band. That is 20.1%.**
+- It is a company habit, not a rare one. komodohealth 27 of 27, robinhood 97 of 119,
+  instacart 58 of 110, doordashusa 95 of 447.
+- On **111** adverts the bands you drop by taking `[0]` are higher than the one you keep.
+  The worst is doordashusa *Software Engineer, Storage*, where `[0]` gives 130,600 to
+  192,000 and the advert really runs to **342,000** at I6. Understated by 150,000.
+- Median gap between the bottom of the lowest band and the top of the highest: 50%.
+
+Take the envelope across the bands and keep the bands too. The label on each one is the
+only place the location is written.
+
+One thing to get right before you envelope anything. **Base pay and total on-target
+earnings turn up as two bands on the same advert:**
+
+```
+doordashusa, Sales Manager, DoorDash for Business
+  The national base pay range ...            108,120 - 159,000
+  The total on-target earnings (base + ...)  180,200 - 265,000
+```
+
+Envelope those together and you publish a base salary that ends at the commission number.
+160 of the 1,643 carry a total-earnings band and 64 of those carry a base band next to it.
+Split them on the label and take the bounds from base pay.
+
+### 12. The period label is wrong in both directions, on every board
+
+Every board takes the period from the company, and companies get it wrong. Not rarely
+enough to ignore, and not in one direction:
+
+```
+verkada   "Estimated Hourly Pay Range"   200,000 - 260,000    an annual band called hourly
+samsara   "Annual Base Salary"                  35 - 58       an hourly rate called annual
+gopuff    bi-week-salary on Lever              22.4 - 26      an hourly rate called fortnightly
+```
+
+Carry those through and you publish a $200,000 an hour job and a $35 a year job, both
+looking like the company declared them. Rescale by the label and it is worse, because the
+wrong word becomes a wrong number.
+
+What works: keep the label only while the amount could belong to that period, and null it
+when it could not. The amount is never touched either way. A null period is honest. A
+wrong one is not.
+
+Two things to watch. Do this per currency, because 6,000,000 yen a year is an ordinary
+salary and a dollar-scale test throws away a correct label. And a company that switches
+the pay field on and leaves it empty publishes a band that is not pay: Lever sends
+`{"min": 0, "max": 0}`, Greenhouse sends 1 to 1 on robinhood and verkada adverts and 1 to
+2 on an instacart one. No real band tops out at two units.
+
+Credit to [@moonie0201](https://github.com/tonyperkins/seeker-os/issues/35#issuecomment-5499361529),
+who had a magnitude test on Greenhouse before I did.
+
+### A note on boards being stable
+
+Worth knowing if you diff boards to find closed adverts. Ten boards fetched twice back to
+back on 2026-09-01, five Greenhouse and five Ashby, including anthropic at 570 adverts and
+openai at 765, returned an identical set of ids both times. doordashusa returned the same
+474 ids three times running. So a board that answers does not shuffle adverts in and out,
+and an id that vanishes really is gone. The thing that makes a false closure is a fetch
+that did not answer at all, so hold the previous snapshot when a call fails.
 
 ## The snapshot
 
